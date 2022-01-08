@@ -6,14 +6,19 @@
 #include <chrono>
 #include <iostream>
 #include <limits>
+#include <list>
+#include <map>
 #include <memory>
 #include <optional>
+#include <stack>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include <cassert>
 #include <cmath>
 
 #include <asm/unistd.h>
@@ -117,8 +122,8 @@ namespace cxxmetrics {
 
         template<typename ToDuration = std::chrono::duration<double>>
         inline static ToDuration to_duration(uint64_t st, uint64_t ed) {
-            using Period = ToDuration::period;
-            using Rep = ToDuration::rep;
+            using Period = typename ToDuration::period;
+            using Rep = typename ToDuration::rep;
             double seconds = (ed - st) / static_cast<double>(rate());
             Rep periods = static_cast<Rep>(seconds * Period::den / Period::num);
             return ToDuration(periods);
@@ -162,17 +167,21 @@ namespace cxxmetrics {
     static_assert(TICKER<TscClock>);
 #endif
 
-    enum Operation{
+    enum EventType{
         START_TIMER,
         STOP_TIMER
     };
 
-    struct Event
-    {
-        Operation op;
+    struct Event {
+        EventType op;
         uint64_t ts;
         std::string_view name;
         std::any data;
+    };
+
+    struct RunningTimer {
+        std::string_view name;
+        uint64_t ts_start;
     };
 
     template<typename T>
@@ -185,6 +194,14 @@ namespace cxxmetrics {
     public:
         ArrayContainer(): q_(nullptr), cap_(0), n_(0) { }
 
+        T* begin() {
+            return q_.get();
+        }
+
+        T* end() {
+            return q_.get() + n_;
+        }
+
         void reserve(size_t cap) {
             q_ = std::make_unique<T[]>(cap);
             cap_ = cap;
@@ -192,7 +209,7 @@ namespace cxxmetrics {
 
         void push_back(const T& item) {
             if(n_ == cap_) {
-                throw "ArrayContainer overflow";
+                throw std::overflow_error("ArrayContainer overflow");
             }
             q_[n_++] = item;
         }
@@ -209,8 +226,6 @@ namespace cxxmetrics {
     template<TICKER Clock=TscClock, typename EventQueue=std::vector<Event>>
     struct Metrics
     {
-        EventQueue queue_;
-        uint64_t timer_count_;
     public:
         Metrics(size_t queue_size=1024*1024) {
             timer_count_ = 0;
@@ -220,17 +235,57 @@ namespace cxxmetrics {
         size_t start_timer(std::string_view name) {
             timer_count_ ++;
             auto cnt = queue_.size();
-            queue_.push_back({Operation::START_TIMER, Clock::now(), name}); 
+            queue_.push_back({EventType::START_TIMER, Clock::now(), name}); 
             return cnt;
         }
 
         void stop_timer() {
-            queue_.push_back({Operation::STOP_TIMER, Clock::now()});
+            if(timer_count_ == 0) {
+                throw std::underflow_error("No timer can be stop.");
+            }
+            timer_count_ --;
+            queue_.push_back({EventType::STOP_TIMER, Clock::now()});
             return ;
         }
 
-    private:
+        void collect() {
+            for(const Event& e: queue_) {
+                switch (e.op) {
+                case EventType::START_TIMER: {
+                    auto it = tlist_.insert(tlist_.end(), {e.name, e.ts});
+                    tmap_.emplace(e.name, it);
+                    break;
+                }
+                case EventType::STOP_TIMER: {
+                    auto name = e.name;
+                    if(name.empty()) {
+                        name = tlist_.back().name;
+                    }
+                    auto map_it = --tmap_.upper_bound(name);
+                    auto list_it = map_it->second;
+                    assert(map_it->first == name);
+                    assert(list_it->name == name);
+                    auto it = map_.try_emplace(name).first;
+                    it->second.push_back(e.ts - list_it->ts_start);
+                    tlist_.erase(list_it);
+                    tmap_.erase(map_it);
+                    break;
+                }
+                default:
+                    break;
+                }
+            }
+            queue_.clear();
+        }
 
+    //private:
+    public:
+        EventQueue queue_;
+        uint64_t timer_count_;
+        std::unordered_map<std::string_view, std::vector<uint64_t>> map_;
+        std::list<RunningTimer> tlist_;
+        std::multimap<std::string_view, decltype(Metrics::tlist_)::iterator> tmap_;
+        
     };
 }
 

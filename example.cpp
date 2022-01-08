@@ -39,9 +39,12 @@ int main() {
             m.stop_timer();
         ed = TscClock::now();
         sum_ed += ed - st;
-        m.queue_.clear();
+        m.collect();
     }
-    
+    auto vec = m.map_["test"];
+    cout << "m[\"test\"].size(): " << vec.size() << endl;
+    cout << "front: " << vec.front() << " back: " << vec.back() << endl;
+
     cout << "Metrics Start: " << sum_st / (double) (T * N) << endl;
     cout << "Metrics Stop: " << sum_ed / (double) (T * N) << endl;
     printf("%.16f\n", TscClock::to_duration<chrono::duration<double, std::nano>>(st, ed).count() / N);
