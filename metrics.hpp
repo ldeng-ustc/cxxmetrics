@@ -278,6 +278,9 @@ namespace cxxmetrics {
             queue_.clear();
         }
 
+        template<typename T> set(std::string_view name) {
+        }
+
     //private:
     public:
         EventQueue queue_;
@@ -287,6 +290,20 @@ namespace cxxmetrics {
         std::multimap<std::string_view, decltype(Metrics::tlist_)::iterator> tmap_;
         
     };
+
+    inline auto& global_metrics() {
+        static Metrics m;
+        return m;
+    }
+
+    inline size_t start_timer(std::string_view name) {
+        global_metrics().start_timer(name);
+    }
+
+    inline void stop_timer() {
+        global_metrics().stop_timer();
+    }
+
 }
 
 #endif
