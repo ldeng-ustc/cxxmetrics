@@ -84,6 +84,37 @@ namespace cxxmetrics {
         }
     };
 
+    template<TICKER Clock=TscClock>
+    class SimpleMetrics {
+    public:
+        using TimerMap = std::unordered_map<std::string_view, uint64_t>;
+
+        SimpleMetrics() {
+            id_ = metrics_cnt_.fetch_add(1);
+        }
+
+        void StartTimer(std::string_view name) {
+            GetTimerMap(id_)[name] = Clock::now();
+        }
+
+        [[maybe_unused]] uint64_t StopTimer(std::string_view name) {
+            return Clock::now() - GetTimerMap(id_)[name];
+        }
+
+    private:
+        static TimerMap & GetTimerMap(int id) {
+            static std::vector<TimerMap> v;
+            if(v.size() <= id) {
+                v.resize(id);
+            }
+            return v[id];
+        }
+
+    private:
+        static std::atomic<int> metrics_cnt_ = 0;
+        int id_;
+    };
+
     template<TICKER Clock=TscClock, typename EventQueue=std::vector<Event>>
     struct Metrics
     {
@@ -93,14 +124,14 @@ namespace cxxmetrics {
             queue_.reserve(queue_size);
         }
 
-        size_t start_timer(std::string_view name) {
+        size_t StartTimer(std::string_view name) {
             timer_count_ ++;
             auto cnt = queue_.size();
             queue_.push_back({EventType::START_TIMER, Clock::now(), name}); 
             return cnt;
         }
 
-        void stop_timer() {
+        void StopTimer() {
             if(timer_count_ == 0) {
                 throw std::underflow_error("No timer can be stop.");
             }
@@ -152,17 +183,17 @@ namespace cxxmetrics {
         
     };
 
-    inline auto& global_metrics() {
-        static Metrics m;
+    inline auto& GlobalMetrics() {
+        static SimpleMetrics m;
         return m;
     }
 
-    inline size_t start_timer(std::string_view name) {
-        global_metrics().start_timer(name);
+    inline size_t StartTimer(std::string_view name) {
+        GlobalMetrics().StartTimer(name);
     }
 
-    inline void stop_timer() {
-        global_metrics().stop_timer();
+    inline void StopTimer(std::string_view name) {
+        GlobalMetrics().StopTimer(name);
     }
 
 }

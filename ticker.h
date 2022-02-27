@@ -24,6 +24,7 @@
 #ifdef CXXMETRICS_LINUX
 #include <sys/mman.h>
 #include <linux/perf_event.h>
+#include <unistd.h>
 #endif
 
 #ifdef CXXMETRICS_USE_TSC
@@ -118,7 +119,11 @@ private:
     inline static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
             int cpu, int group_fd, unsigned long flags)
     {
+#ifdef __NR_perf_event_open
         return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+#else
+        return -1;
+#endif
     }
 #endif
 
