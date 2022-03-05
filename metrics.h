@@ -24,6 +24,47 @@
 
 namespace cxxmetrics {
 
+
+using Timestamp = uint64_t;
+
+template<TICKER Ticker=TscClock>
+class Timer {
+public:
+
+    Timer() : tmp_(Ticker::now()) {}
+
+    void Start() {
+        tmp_ = Ticker::now();
+    }
+
+    uint64_t Stop() {
+        return tmp_ = Ticker::now() - tmp_;
+    }
+private:
+    uint64_t tmp_; 
+};
+
+template<TICKER Clock=TscClock>
+class SimpleMetrics {
+public:
+    template<typename T>
+    void Set(std::string_view key, T value) {
+        map_.emplace(key, std::make_any(value));
+    }
+
+    void StartTimer(std::string_view key) {
+        map_.emplace(key, std::make_any<Timer<>>());
+    }
+
+    uint64_t StopTimer(std::string_view key) {
+        return std::any_cast<Timer<>&>(map_[key]).Stop();
+    }
+
+
+private:
+    std::unordered_map<std::string_view, std::any > map_;
+};
+
 enum EventType{
     START_TIMER,
     STOP_TIMER
@@ -78,37 +119,6 @@ public:
     void clear() {
         n_ = 0;
     }
-};
-
-template<TICKER Clock=TscClock>
-class SimpleMetrics {
-public:
-    using TimerMap = std::unordered_map<std::string_view, uint64_t>;
-
-    SimpleMetrics() {
-        id_ = metrics_cnt_.fetch_add(1);
-    }
-
-    void StartTimer(std::string_view name) {
-        GetTimerMap(id_)[name] = Clock::now();
-    }
-
-    [[maybe_unused]] uint64_t StopTimer(std::string_view name) {
-        return Clock::now() - GetTimerMap(id_)[name];
-    }
-
-private:
-    static TimerMap & GetTimerMap(int id) {
-        static std::vector<TimerMap> v;
-        if(v.size() <= id) {
-            v.resize(id);
-        }
-        return v[id];
-    }
-
-private:
-    static std::atomic<int> metrics_cnt_ = 0;
-    int id_;
 };
 
 template<TICKER Clock=TscClock, typename EventQueue=std::vector<Event>>
@@ -166,7 +176,7 @@ public:
         queue_.clear();
     }
 
-    template<typename T> set(std::string_view name) {
+    template<typename T> void set(std::string_view name) {
     }
 
 //private:
@@ -184,12 +194,17 @@ inline auto& GlobalMetrics() {
     return m;
 }
 
-inline size_t StartTimer(std::string_view name) {
-    GlobalMetrics().StartTimer(name);
+inline size_t StartTimer(std::string_view key) {
+    GlobalMetrics().StartTimer(key);
 }
 
-inline void StopTimer(std::string_view name) {
-    GlobalMetrics().StopTimer(name);
+inline void StopTimer(std::string_view key) {
+    GlobalMetrics().StopTimer(key);
+}
+
+template<typename T>
+inline void SetEntry(std::string_view key, T value) {
+    GlobalMetrics().Set(value);
 }
 
 }

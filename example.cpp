@@ -1,4 +1,4 @@
-#include "metrics.hpp"
+#include "metrics.h"
 
 using namespace std;
 using namespace cxxmetrics;
@@ -31,12 +31,12 @@ int main() {
     for(uint64_t i=0; i<T; i++) {
         st = TscClock::now();
         for(size_t j=0; j<N;j++)
-            m.start_timer("test");
+            m.StartTimer("test");
         ed = TscClock::now();
         sum_st += ed - st;
         st = TscClock::now();
         for(size_t j=0; j<N;j++)
-            m.stop_timer();
+            m.StopTimer();
         ed = TscClock::now();
         sum_ed += ed - st;
         m.collect();
