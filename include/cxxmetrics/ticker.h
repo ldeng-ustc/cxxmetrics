@@ -36,17 +36,21 @@
 #endif
 
 #ifdef CXXMETRICS_USE_CONCEPTS
-    template <typename T>
-    concept TICKER = requires {
-        {T::now()} -> std::same_as<uint64_t>;
-        {T::rate()} -> std::convertible_to<double>;
-    };
+template <typename T>
+concept TICKER = requires {
+    {T::now()} -> std::same_as<uint64_t>;
+    {T::rate()} -> std::convertible_to<double>; // maybe freq()?
+};
+
+template <typename T>
+concept STDCLOCK = std::chrono::is_clock<T>::value;
 #else
-#define TICKER typename
+#define TICKER    typename
+#define STDCLOCK  typename
 #endif
 
 #ifdef CXXMETRICS_USE_TSC
-class TscClock
+class TscTicker
 {
 public:
     inline static uint64_t now() {
@@ -97,7 +101,6 @@ public:
                 uint64_t tsc_khz = llround(tsc_ghz * 1e6);
                 r = tsc_khz * 1000;
             } else {
-
                 r = estimate_tsc_frequency(sleep_time_ms);
             }
         }
@@ -105,20 +108,26 @@ public:
     }
 
     template<typename ToDuration = std::chrono::duration<double>>
-    inline static ToDuration to_duration(uint64_t st, uint64_t ed) {
+    inline static ToDuration to_duration(int64_t dur) {
         using Period = typename ToDuration::period;
         using Rep = typename ToDuration::rep;
-        double seconds = (ed - st) / static_cast<double>(rate());
+        double seconds = dur / static_cast<double>(rate());
         Rep periods = static_cast<Rep>(seconds * Period::den / Period::num);
         return ToDuration(periods);
+    }
+
+    template<typename ToDuration = std::chrono::duration<double>>
+    inline static ToDuration to_duration(uint64_t st, uint64_t ed) {
+        // unsigned int overflows performed mod 2^n, but signed int overflow is UB.
+        // so must get differents between two uint64_t, then convert to int64_t.
+        return to_duration(static_cast<int64_t>(ed - st));
     }
 private:
 
 #ifdef __linux__
     // from https://stackoverflow.com/questions/35123379/getting-tsc-rate-from-x86-kernel
     inline static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
-            int cpu, int group_fd, unsigned long flags)
-    {
+            int cpu, int group_fd, unsigned long flags) {
 #ifdef __NR_perf_event_open
         return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
 #else
@@ -130,12 +139,12 @@ private:
     inline static std::optional<std::pair<int64_t, int64_t>> get_tsc_mult_shift() {
 #ifdef __linux__
         struct perf_event_attr pe = {
-        .type = PERF_TYPE_HARDWARE,
-        .size = sizeof(struct perf_event_attr),
-        .config = PERF_COUNT_HW_INSTRUCTIONS,
-        .disabled = 1,
-        .exclude_kernel = 1,
-        .exclude_hv = 1
+            .type = PERF_TYPE_HARDWARE,
+            .size = sizeof(struct perf_event_attr),
+            .config = PERF_COUNT_HW_INSTRUCTIONS,
+            .disabled = 1,
+            .exclude_kernel = 1,
+            .exclude_hv = 1
         };
         int fd = perf_event_open(&pe, 0, -1, -1, 0);
         if (fd == -1) {
@@ -156,6 +165,26 @@ private:
 #endif
     }
 };
+#endif
+
+template <STDCLOCK Clock>
+class StdTicker {
+public:
+    inline static uint64_t now() {
+        static auto start = Clock::now();
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count();
+    }
+
+    constexpr static uint64_t rate() {
+        return std::nano::den;
+    }
+};
+
+
+#ifdef CXXMETRICS_USE_TSC
+using DefaultTicker = TscTicker;
+#else
+
 #endif
 
 #endif

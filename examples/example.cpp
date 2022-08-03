@@ -1,4 +1,4 @@
-#include "metrics.h"
+#include "cxxmetrics/metrics.h"
 
 using namespace std;
 using namespace cxxmetrics;
@@ -18,26 +18,26 @@ int main() {
     const size_t T = 16*1024;
     const size_t N = 1024;
 
-    auto st = TscClock::now();
+    auto st = TscTicker::now();
     for(size_t i=0; i<T; i++)
         for(size_t j=0; j<N;j++)
-            TscClock::now();
-    auto ed = TscClock::now();
+            TscTicker::now();
+    auto ed = TscTicker::now();
     cout << "Raw clock: " << (ed - st) / (double) (T * N) << endl;
 
-    Metrics<TscClock, ArrayContainer<Event>> m(N * 2);
+    Metrics<TscTicker, ArrayContainer<Event>> m(N * 2);
     uint64_t sum_st = 0;
     uint64_t sum_ed = 0;
     for(uint64_t i=0; i<T; i++) {
-        st = TscClock::now();
+        st = TscTicker::now();
         for(size_t j=0; j<N;j++)
             m.StartTimer("test");
-        ed = TscClock::now();
+        ed = TscTicker::now();
         sum_st += ed - st;
-        st = TscClock::now();
+        st = TscTicker::now();
         for(size_t j=0; j<N;j++)
             m.StopTimer();
-        ed = TscClock::now();
+        ed = TscTicker::now();
         sum_ed += ed - st;
         m.collect();
     }
@@ -47,6 +47,6 @@ int main() {
 
     cout << "Metrics Start: " << sum_st / (double) (T * N) << endl;
     cout << "Metrics Stop: " << sum_ed / (double) (T * N) << endl;
-    printf("%.16f\n", TscClock::to_duration<chrono::duration<double, std::nano>>(st, ed).count() / N);
+    printf("%.16f\n", TscTicker::to_duration<chrono::duration<double, std::nano>>(st, ed).count() / N);
     return 0;
 }

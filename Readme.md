@@ -1,1 +1,2 @@
-# CXXMetris: A Fast, Lightweight, Embedded C++ Metrics Library
+# CXXMetris: A Fast, Lightweight, In-Thread C++ Metrics Library
+

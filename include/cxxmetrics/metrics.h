@@ -24,10 +24,32 @@
 
 namespace cxxmetrics {
 
+template<typename T>
+struct Duration {
+    int64_t cycles;
+    Duration(int64_t cycles): cycles(cycles) {};
+    
+    template<typename StdDuration = std::chrono::duration<double>>
+    StdDuration ToStdDuration() const {
+        return T::to_duration(cycles);
+    }
+};
+
+// template<typename T>
+// struct Timestamp {
+//     uint64_t cycles;
+
+//     Timestamp(uint64_t cycles): cycles(cycles) {};
+// };
+
+// template<TICKER T>
+// Duration<T> operator- (Timestamp<T> ed, Timestamp<T> st) {
+//     return Duration<T>(ed.cycles - st.cycles);
+// }
 
 using Timestamp = uint64_t;
-
-template<TICKER Ticker=TscClock>
+using DefaultTicker = TscTicker;
+template<TICKER Ticker=DefaultTicker>
 class Timer {
 public:
 
@@ -37,14 +59,17 @@ public:
         tmp_ = Ticker::now();
     }
 
-    uint64_t Stop() {
+    Duration<Ticker> Stop() {
         return tmp_ = Ticker::now() - tmp_;
     }
+
 private:
     uint64_t tmp_; 
 };
 
-template<TICKER Clock=TscClock>
+using DefaultTimer = Timer<>;
+
+
 class SimpleMetrics {
 public:
     template<typename T>
@@ -56,7 +81,7 @@ public:
         map_.emplace(key, std::make_any<Timer<>>());
     }
 
-    uint64_t StopTimer(std::string_view key) {
+    Duration<DefaultTicker> StopTimer(std::string_view key) {
         return std::any_cast<Timer<>&>(map_[key]).Stop();
     }
 
@@ -121,7 +146,7 @@ public:
     }
 };
 
-template<TICKER Clock=TscClock, typename EventQueue=std::vector<Event>>
+template<TICKER Clock=DefaultTicker, typename EventQueue=std::vector<Event>>
 struct Metrics
 {
 public:
@@ -194,12 +219,12 @@ inline auto& GlobalMetrics() {
     return m;
 }
 
-inline size_t StartTimer(std::string_view key) {
+inline void StartTimer(std::string_view key) {
     GlobalMetrics().StartTimer(key);
 }
 
-inline void StopTimer(std::string_view key) {
-    GlobalMetrics().StopTimer(key);
+inline Duration<DefaultTicker> StopTimer(std::string_view key) {
+    return GlobalMetrics().StopTimer(key);
 }
 
 template<typename T>
