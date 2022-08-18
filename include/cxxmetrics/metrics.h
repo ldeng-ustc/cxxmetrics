@@ -9,6 +9,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <memory_resource>
 #include <optional>
 #include <stack>
 #include <string_view>
@@ -35,25 +36,17 @@ struct Duration {
     }
 };
 
-// template<typename T>
-// struct Timestamp {
-//     uint64_t cycles;
+class MetricsMeter {
+    virtual ~MetricsMeter();
+};
 
-//     Timestamp(uint64_t cycles): cycles(cycles) {};
-// };
-
-// template<TICKER T>
-// Duration<T> operator- (Timestamp<T> ed, Timestamp<T> st) {
-//     return Duration<T>(ed.cycles - st.cycles);
-// }
-
-using Timestamp = uint64_t;
-using DefaultTicker = TscTicker;
 template<TICKER Ticker=DefaultTicker>
-class Timer {
+class Timer : public MetricsMeter {
 public:
 
     Timer() : tmp_(Ticker::now()) {}
+
+    ~Timer() override {}
 
     void Start() {
         tmp_ = Ticker::now();
@@ -69,153 +62,60 @@ private:
 
 using DefaultTimer = Timer<>;
 
+template<typename T> 
+class Attribute : public MetricsMeter {
+    void Set(T&& value) {
+        data_ = value;
+    }
 
-class SimpleMetrics {
+    T& Get() {
+        return data_;
+    }
+private:
+    T data_;
+};
+
+class Metrics {
 public:
+    Metrics(size_t buffer_size=1024*1024) : pool_(buffer_size), allocator_(&pool_) {}
+
     template<typename T>
     void Set(std::string_view key, T value) {
-        map_.emplace(key, std::make_any(value));
+        map_.emplace(key, New<Attribute<T>>());
+    }
+
+    template<typename T>
+    T Get(std::string_view key, T value) {
+        return dynamic_cast<Attribute<T>>(map_[key]).Get();
     }
 
     void StartTimer(std::string_view key) {
-        map_.emplace(key, std::make_any<Timer<>>());
+        map_.emplace(key, New<DefaultTimer>());
     }
 
-    Duration<DefaultTicker> StopTimer(std::string_view key) {
-        return std::any_cast<Timer<>&>(map_[key]).Stop();
+    void StopTimer(std::string_view key) {
+        dynamic_cast<Attribute<T>>(map_[key])
     }
-
 
 private:
-    std::unordered_map<std::string_view, std::any > map_;
-};
+    template<typename T>
+    T* New() {
+        return allocator_.new_object<T>(value);
+    }
 
-enum EventType{
-    START_TIMER,
-    STOP_TIMER
-};
+    template<typename T>
+    T* Get() {
+        
+    }
 
-struct Event {
-    EventType op;
-    uint64_t ts;
-    std::string_view name;
-    std::any data;
-};
-
-struct RunningTimer {
-    std::string_view name;
-    uint64_t ts_start;
-};
-
-template<typename T>
-class ArrayContainer
-{
 private:
-    std::unique_ptr<T[]> q_;
-    size_t cap_;
-    size_t n_;
-public:
-    ArrayContainer(): q_(nullptr), cap_(0), n_(0) { }
-
-    T* begin() {
-        return q_.get();
-    }
-
-    T* end() {
-        return q_.get() + n_;
-    }
-
-    void reserve(size_t cap) {
-        q_ = std::make_unique<T[]>(cap);
-        cap_ = cap;
-    }
-
-    void push_back(const T& item) {
-        if(n_ == cap_) {
-            throw std::overflow_error("ArrayContainer overflow");
-        }
-        q_[n_++] = item;
-    }
-
-    size_t size() {
-        return n_;
-    }
-
-    void clear() {
-        n_ = 0;
-    }
-};
-
-template<TICKER Clock=DefaultTicker, typename EventQueue=std::vector<Event>>
-struct Metrics
-{
-public:
-    Metrics(size_t queue_size=1024*1024) {
-        timer_count_ = 0;
-        queue_.reserve(queue_size);
-    }
-
-    size_t StartTimer(std::string_view name) {
-        timer_count_ ++;
-        auto cnt = queue_.size();
-        queue_.push_back({EventType::START_TIMER, Clock::now(), name}); 
-        return cnt;
-    }
-
-    void StopTimer() {
-        if(timer_count_ == 0) {
-            throw std::underflow_error("No timer can be stop.");
-        }
-        timer_count_ --;
-        queue_.push_back({EventType::STOP_TIMER, Clock::now()});
-        return ;
-    }
-
-    void collect() {
-        for(const Event& e: queue_) {
-            switch (e.op) {
-            case EventType::START_TIMER: {
-                auto it = tlist_.insert(tlist_.end(), {e.name, e.ts});
-                tmap_.emplace(e.name, it);
-                break;
-            }
-            case EventType::STOP_TIMER: {
-                auto name = e.name;
-                if(name.empty()) {
-                    name = tlist_.back().name;
-                }
-                auto map_it = --tmap_.upper_bound(name);
-                auto list_it = map_it->second;
-                assert(map_it->first == name);
-                assert(list_it->name == name);
-                auto it = map_.try_emplace(name).first;
-                it->second.push_back(e.ts - list_it->ts_start);
-                tlist_.erase(list_it);
-                tmap_.erase(map_it);
-                break;
-            }
-            default:
-                break;
-            }
-        }
-        queue_.clear();
-    }
-
-    template<typename T> void set(std::string_view name) {
-    }
-
-//private:
-public:
-    EventQueue queue_;
-    uint64_t timer_count_;
-    std::unordered_map<std::string_view, std::vector<uint64_t>> map_;
-    std::list<RunningTimer> tlist_;
-    std::multimap<std::string_view, decltype(Metrics::tlist_)::iterator> tmap_;
-    
+    std::pmr::monotonic_buffer_resource pool_;
+    std::pmr::polymorphic_allocator<> allocator_;
+    std::unordered_map<std::string_view, MetricsMeter*> map_; 
 };
 
 inline auto& GlobalMetrics() {
-    static SimpleMetrics m;
+    static Metrics m;
     return m;
 }
 

@@ -167,7 +167,7 @@ private:
 };
 #endif
 
-template <STDCLOCK Clock>
+template <STDCLOCK Clock=std::chrono::high_resolution_clock>
 class StdTicker {
 public:
     inline static uint64_t now() {
@@ -184,7 +184,7 @@ public:
 #ifdef CXXMETRICS_USE_TSC
 using DefaultTicker = TscTicker;
 #else
-
+using DefaultTicker = StdTicker<>;
 #endif
 
 #endif

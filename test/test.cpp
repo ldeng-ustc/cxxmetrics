@@ -26,9 +26,11 @@ TEST_CASE("Tickers") {
     CHECK(sync < 1.0001);
     CHECK(sync > 0.9999);
 
+#ifdef CXXMETRICS_USE_TSC
     sync = sync_rate<TscTicker>(200);
     CHECK(sync < 1.0001);
     CHECK(sync > 0.9999);
+#endif
 
     sync = sync_rate<StdTicker<std::chrono::system_clock>>(200);
     CHECK(sync < 1.0001);
@@ -41,6 +43,5 @@ TEST_CASE("Tickers") {
     sync = sync_rate<StdTicker<std::chrono::high_resolution_clock>>(200);
     CHECK(sync < 1.0001);
     CHECK(sync > 0.9999);
-
 }
 
