@@ -38,6 +38,6 @@ size_t id() {
     return id;
 }
 
-string_view name(size_t id) {
+std::string_view name(size_t id) {
     return name_vec[id];
 }

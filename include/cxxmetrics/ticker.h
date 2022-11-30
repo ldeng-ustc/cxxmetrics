@@ -107,21 +107,6 @@ public:
         return r;
     }
 
-    template<typename ToDuration = std::chrono::duration<double>>
-    inline static ToDuration to_duration(int64_t dur) {
-        using Period = typename ToDuration::period;
-        using Rep = typename ToDuration::rep;
-        double seconds = dur / static_cast<double>(rate());
-        Rep periods = static_cast<Rep>(seconds * Period::den / Period::num);
-        return ToDuration(periods);
-    }
-
-    template<typename ToDuration = std::chrono::duration<double>>
-    inline static ToDuration to_duration(uint64_t st, uint64_t ed) {
-        // unsigned int overflows performed mod 2^n, but signed int overflow is UB.
-        // so must get differents between two uint64_t, then convert to int64_t.
-        return to_duration(static_cast<int64_t>(ed - st));
-    }
 private:
 
 #ifdef __linux__
@@ -179,6 +164,15 @@ public:
         return std::nano::den;
     }
 };
+
+template<TICKER Ticker, typename TargetDuration = std::chrono::duration<double>>
+inline static TargetDuration ToDuration(int64_t dur) {
+    using Period = typename TargetDuration::period;
+    using Rep = typename TargetDuration::rep;
+    double seconds = dur / static_cast<double>(Ticker::rate());
+    Rep periods = static_cast<Rep>(seconds * Period::den / Period::num);
+    return TargetDuration(periods);
+}
 
 
 #ifdef CXXMETRICS_USE_TSC
